@@ -32,7 +32,6 @@ jobs:
       - name: Install protobuf plugins
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/transport/cmd/protoc-gen-go-transport@latest
 
       - name: Set up Global Git identity
         run: |
@@ -71,8 +70,8 @@ jobs:
           export PATH="$PATH:$(go env GOPATH)/bin"
           protoc --version &&
           echo "Building protos for version ${{ steps.bump_version.outputs.new_version }}..." &&
-          protoc --proto_path=transport-models-go --go_opt=paths=source_relative \
-          --go_out=transport-models-go --go-transport_opt=paths=source_relative \
+          protoc --proto_path=transport-models-go \
+          --go_out=transport-models-go --go_opt=paths=source_relative \
           protos/*/*.proto
 
       - name: Commit updated version file
