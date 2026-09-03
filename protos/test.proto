@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package com.example.kafka;
+option go_package = "github.com/MorningBlossom/transport-models-go/protos";
 
 message TestMessage {
   string message = 1;
