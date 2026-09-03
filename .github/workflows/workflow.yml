@@ -1,0 +1,102 @@
+name: build-transport-models-go
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish-kafka-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    name: building transport-models
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '25.x'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+
+      - name: Install protobuf plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/transport/cmd/protoc-gen-go-transport@latest
+
+      - name: Set up Global Git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: clone transport go repo
+        run : |
+          git clone https://x-access-token:${{ secrets.GH_PAT }}@github.com/MorningBlossom/transport-models-go.git
+
+      - name: Bump version in file
+        id: bump_version
+        run: |
+          cd transport-models-go
+          
+          # If file doesn't exist, start at 0.1.0
+          if [ ! -f BUMP_VERSION ]; then
+            echo "0.1.0" > BUMP_VERSION
+          fi
+          
+          CURRENT_VERSION=$(cat BUMP_VERSION | tr -d '[:space:]')
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Simple patch version bump (e.g., 1.0.0 -> 1.0.1)
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+          patch=$((patch + 1))
+          NEW_VERSION="$major.$minor.$patch"
+          
+          echo "$NEW_VERSION" > BUMP_VERSION
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Build transport go
+        run: |
+          # Add your build commands here
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          protoc --version &&
+          echo "Building protos for version ${{ steps.bump_version.outputs.new_version }}..." &&
+          protoc --proto_path=transport-models-go --go_opt=paths=source_relative \
+          --go_out=transport-models-go --go-transport_opt=paths=source_relative \
+          protos/*/*.proto
+
+      - name: Commit updated version file
+        run: |
+          cd transport-models-go
+          git add BUMP_VERSION protos/**/*.pb.go
+          git commit -m "chore: bump version to v${{ steps.bump_version.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: Create Git Tag
+        run: |
+          cd transport-models-go
+          TAG="v${{ steps.bump_version.outputs.new_version }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: MorningBlossom/transport-models-go
+          tag_name: v${{ steps.bump_version.outputs.new_version }}
+          name: Release v${{ steps.bump_version.outputs.new_version }}
+
+      - name: cleanup
+        run: |
+          rm -rf transport-models-go
